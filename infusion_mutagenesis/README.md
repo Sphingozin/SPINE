@@ -47,9 +47,9 @@ Long mutation regions are split into codon-aligned chunks so insert oligos fit t
 
 Default settings:
 
-- homology length: `15 bp` on each side
+- homology length: `18 bp` on each side
 - oligo length: `230 bp`
-- mutable chunk size: up to about `198 bp`
+- mutable chunk size: up to about `192 bp`
 
 Each chunk receives its own vector primer pair. The insert format is:
 
@@ -109,7 +109,7 @@ python SPINE_mutagenesis_infusion.py `
   --output output_folder `
   --scan-mode saturation `
   --usage mouse `
-  --homology-len 15 `
+  --homology-len 18 `
   --oligo-len 230
 ```
 

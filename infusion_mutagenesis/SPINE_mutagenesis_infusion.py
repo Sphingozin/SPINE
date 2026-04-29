@@ -245,7 +245,7 @@ def generate_infusion_alanine_scan(
     gene_end,
     mutation_regions,
     output,
-    homology_len=15,
+    homology_len=18,
     oligo_len=230,
     usage="human",
     scan_mode="alanine",
@@ -361,7 +361,7 @@ def main():
     parser.add_argument("--gene-end", required=True, type=int, help="1-based nucleotide end of the gene in the plasmid.")
     parser.add_argument("--mutation-regions", required=True, help="Comma-separated 1-based nucleotide regions, e.g. 2050-2220,2500-2700.")
     parser.add_argument("--output", required=True, help="Output folder.")
-    parser.add_argument("--homology-len", default=15, type=int, help="In-Fusion homology length added to each insert end.")
+    parser.add_argument("--homology-len", default=18, type=int, help="In-Fusion homology length added to each insert end.")
     parser.add_argument("--oligo-len", default=230, type=int, help="Maximum total insert oligo length including homology arms.")
     parser.add_argument("--scan-mode", choices=["alanine", "conservative", "saturation"], default="alanine", help="Mutation scan type.")
     parser.add_argument("--usage", choices=["human", "ecoli", "mouse"], default="human", help="Codon usage for mutant codon choice.")

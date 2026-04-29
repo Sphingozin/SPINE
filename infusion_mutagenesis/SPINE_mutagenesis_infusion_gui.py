@@ -64,7 +64,7 @@ class SpineInfusionGui(tk.Tk):
         self.start_var = tk.StringVar()
         self.end_var = tk.StringVar()
         self.regions_var = tk.StringVar()
-        self.homology_var = tk.StringVar(value="15")
+        self.homology_var = tk.StringVar(value="18")
         self.oligo_len_var = tk.StringVar(value="230")
         self.usage_var = tk.StringVar(value="human")
         self.scan_mode_var = tk.StringVar(value="alanine")
@@ -89,7 +89,7 @@ class SpineInfusionGui(tk.Tk):
         self._entry_row(form, 4, "Gene start", self.start_var, "1-based nucleotide coordinate")
         self._entry_row(form, 5, "Gene end", self.end_var, "1-based nucleotide coordinate")
         self._entry_row(form, 6, "Mutation regions", self.regions_var, "Plasmid nt ranges, example: 2050-2220,2500-2700")
-        self._entry_row(form, 7, "Homology length", self.homology_var, "Usually 15 bp for In-Fusion")
+        self._entry_row(form, 7, "Homology length", self.homology_var, "Usually 18 bp for In-Fusion")
         self._entry_row(form, 8, "Oligo length", self.oligo_len_var, "Maximum total insert length")
 
         ttk.Label(form, text="Scan mode").grid(row=9, column=0, sticky="w", pady=4)
