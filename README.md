@@ -25,6 +25,24 @@ python3 run_spine.py -wDir tests -geneFile combined_fasta.fa -oligoLen 230 -muta
 Deep Mutational Scanning:
 python3 run_spine.py -wDir tests -geneFile Kir.fa -oligoLen 230 -mutationType DMS -usage ecoli
 
+# In-Fusion Mutagenesis GUI
+The `infusion_mutagenesis` folder contains a separate GUI and command-line workflow for In-Fusion cloning. It leaves the original SPINE Golden Gate workflow untouched.
+
+Supported scan modes:
+- alanine scan
+- conservative scan
+- full saturation scan
+
+Supported codon usage options:
+- human
+- mouse
+- ecoli
+
+Start the GUI by double-clicking:
+`infusion_mutagenesis/run_SPINE_mutagenesis_infusion_gui.bat`
+
+See `infusion_mutagenesis/README.md` for coordinate rules, primer design details, outputs, and command-line usage.
+
 # Usage
 ```
 optional arguments:
