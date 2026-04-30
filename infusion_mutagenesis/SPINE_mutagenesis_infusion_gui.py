@@ -42,7 +42,7 @@ class QueueWriter(io.TextIOBase):
 class SpineInfusionGui(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("SPINE Mutagenesis - In-Fusion")
+        self.title("SPINE Mutagenesis - In-Fusion (alanine/glutamate/conservative/saturation)")
         self.geometry("920x680")
         self.minsize(820, 580)
         self.output_queue = queue.Queue()

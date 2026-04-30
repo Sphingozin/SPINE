@@ -130,3 +130,48 @@ human
 mouse
 ecoli
 ```
+
+## Site-Directed In-Fusion Saturation Primer Designer
+
+This folder also includes a separate tool for designing two-fragment site-directed mutagenesis primers around a single amino-acid position:
+
+```text
+site_directed_infusion.py
+run_site_directed_infusion_gui.bat
+```
+
+The user provides:
+
+- full plasmid FASTA
+- gene start/end coordinates
+- exact amino-acid position to mutate
+- two restriction enzymes used to digest the receiving backbone
+- design mode: `saturation` or `degenerate`
+
+For each mutation site, the tool generates the primer layout:
+
+```text
+F1: restriction site 1 + gene-start binding sequence
+R1: reverse primer ending immediately before the mutation codon
+F2: overlap to fragment 1 + mutant codon + downstream binding sequence
+R2: restriction site 2 + gene-end reverse binding sequence
+```
+
+In `saturation` mode, the tool creates one F2 primer for each non-wild-type amino acid.
+
+In `degenerate` mode, the tool creates a compact F2 primer set using:
+
+```text
+NNT
+VAA
+ATG
+TGG
+```
+
+Outputs are written to a timestamped folder:
+
+```text
+SiteDirected_InFusion_Primers.fasta
+SiteDirected_InFusion_Primers.csv
+SiteDirected_InFusion_Design.txt
+```
