@@ -96,7 +96,7 @@ class SpineInfusionGui(tk.Tk):
         ttk.Combobox(
             form,
             textvariable=self.scan_mode_var,
-            values=("alanine", "conservative", "saturation"),
+            values=("alanine", "glutamate", "conservative", "saturation"),
             state="readonly",
             width=16,
         ).grid(row=9, column=1, sticky="w", pady=4)
@@ -106,7 +106,7 @@ class SpineInfusionGui(tk.Tk):
             row=10, column=1, sticky="w", pady=4
         )
 
-        mode_notes = ttk.Label(form, text="alanine: X->A | conservative: similar amino acid | saturation: all non-WT amino acids")
+        mode_notes = ttk.Label(form, text="alanine: X->A | glutamate: X->E | conservative: similar amino acid | saturation: all non-WT amino acids")
         mode_notes.grid(row=11, column=1, columnspan=2, sticky="w", pady=4)
 
         actions = ttk.Frame(form)

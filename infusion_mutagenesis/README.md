@@ -2,9 +2,10 @@
 
 This folder contains a separate In-Fusion cloning workflow for SPINE-style mutagenesis. It does not modify the original `SPINE/SPINE.py` code and does not use Golden Gate cloning, BsaI, BsmBI, barcode primers, or Type IIS overhangs.
 
-The GUI supports three mutation modes:
+The GUI supports four mutation modes:
 
 - **Alanine scan**: every non-alanine residue in the selected regions is mutated to alanine.
+- **Glutamate scan**: every non-glutamate residue in the selected regions is mutated to glutamate.
 - **Conservative scan**: residues are mutated to similar amino acids, such as `E->D`, `D->E`, `R->K`, `K->R`, `S->T`, and related substitutions.
 - **Full saturation scan**: every selected residue is mutated to the other 19 standard amino acids.
 
@@ -117,6 +118,7 @@ Allowed scan modes:
 
 ```text
 alanine
+glutamate
 conservative
 saturation
 ```

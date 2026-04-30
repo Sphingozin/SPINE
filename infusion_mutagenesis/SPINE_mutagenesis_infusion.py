@@ -157,6 +157,8 @@ def preferred_codon(amino_acid, usage):
 def mutation_targets(wt_amino_acid, scan_mode):
     if scan_mode == "alanine":
         return [] if wt_amino_acid == 'Ala' else ['Ala']
+    if scan_mode == "glutamate":
+        return [] if wt_amino_acid == 'Glu' else ['Glu']
     if scan_mode == "conservative":
         return CONSERVATIVE_MUTATIONS.get(wt_amino_acid, [])
     if scan_mode == "saturation":
@@ -355,7 +357,7 @@ def generate_infusion_alanine_scan(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate alanine-scan In-Fusion inserts from a full plasmid FASTA.")
+    parser = argparse.ArgumentParser(description="Generate In-Fusion mutagenesis inserts from a full plasmid FASTA.")
     parser.add_argument("--fasta", required=True, help="Full plasmid FASTA file.")
     parser.add_argument("--gene-start", required=True, type=int, help="1-based nucleotide start of the gene in the plasmid.")
     parser.add_argument("--gene-end", required=True, type=int, help="1-based nucleotide end of the gene in the plasmid.")
@@ -363,7 +365,7 @@ def main():
     parser.add_argument("--output", required=True, help="Output folder.")
     parser.add_argument("--homology-len", default=18, type=int, help="In-Fusion homology length added to each insert end.")
     parser.add_argument("--oligo-len", default=230, type=int, help="Maximum total insert oligo length including homology arms.")
-    parser.add_argument("--scan-mode", choices=["alanine", "conservative", "saturation"], default="alanine", help="Mutation scan type.")
+    parser.add_argument("--scan-mode", choices=["alanine", "glutamate", "conservative", "saturation"], default="alanine", help="Mutation scan type.")
     parser.add_argument("--usage", choices=["human", "ecoli", "mouse"], default="human", help="Codon usage for mutant codon choice.")
     args = parser.parse_args()
 
