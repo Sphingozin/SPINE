@@ -2,11 +2,12 @@
 
 This folder contains a separate In-Fusion cloning workflow for SPINE-style mutagenesis. It does not modify the original `SPINE/SPINE.py` code and does not use Golden Gate cloning, BsaI, BsmBI, barcode primers, or Type IIS overhangs.
 
-The GUI supports four mutation modes:
+The GUI supports five mutation modes:
 
 - **Alanine scan**: every non-alanine residue in the selected regions is mutated to alanine.
 - **Glutamate scan**: every non-glutamate residue in the selected regions is mutated to glutamate.
 - **Conservative scan**: residues are mutated to similar amino acids, such as `E->D`, `D->E`, `R->K`, `K->R`, `S->T`, and related substitutions.
+- **Membrane conservative scan**: substitutions depend on whether each amino-acid position is lipid-facing, packed inside the protein, hydrated/pore-facing, or functionally sensitive.
 - **Full saturation scan**: every selected residue is mutated to the other 19 standard amino acids.
 
 ## Start the GUI
@@ -41,6 +42,23 @@ Required coordinates:
 ```
 
 The mutation regions must fall inside the selected gene. Regions are automatically expanded to full codons when needed.
+
+### Membrane-protein environments
+
+For `membrane_conservative`, annotate every amino-acid position covered by the mutation regions. Positions are numbered from the selected gene start, not from the plasmid start. Enter semicolon-separated environment groups such as:
+
+```text
+tm_lipid:1-20;tm_packed:21-30;hydrated:31-40;functional:41,44
+```
+
+Allowed environments:
+
+- `tm_lipid`: transmembrane residues exposed to lipid
+- `tm_packed`: buried helix-helix or protein-interior contacts
+- `hydrated`: loops, solvent-exposed surfaces, aqueous crevices, or pore-facing residues
+- `functional`: gating charges, countercharges, conserved polar networks, and other sensitive positions
+
+The program requires a label for every selected codon and rejects conflicting or incomplete annotations. The `functional` class uses a deliberately narrow same-class substitution set. It does not imply that variants such as `R->K` or `E->D` are functionally neutral.
 
 ## Oligo Chunking
 
@@ -120,8 +138,24 @@ Allowed scan modes:
 alanine
 glutamate
 conservative
+membrane_conservative
 saturation
 ```
+
+Membrane-aware command-line example:
+
+```powershell
+python SPINE_mutagenesis_infusion.py `
+  --fasta plasmid.fasta `
+  --gene-start 1800 `
+  --gene-end 3065 `
+  --mutation-regions 1800-1919 `
+  --output membrane_scan `
+  --scan-mode membrane_conservative `
+  --membrane-environments "tm_lipid:1-20;tm_packed:21-30;hydrated:31-40"
+```
+
+The summary CSV includes a `membrane_environment` column for design traceability.
 
 Allowed codon usage values:
 
@@ -175,3 +209,4 @@ SiteDirected_InFusion_Primers.fasta
 SiteDirected_InFusion_Primers.csv
 SiteDirected_InFusion_Design.txt
 ```
+

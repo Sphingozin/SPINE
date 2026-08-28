@@ -30,7 +30,9 @@ The `infusion_mutagenesis` folder contains a separate GUI and command-line workf
 
 Supported scan modes:
 - alanine scan
+- glutamate scan
 - conservative scan
+- membrane-aware conservative scan with per-residue environments (`tm_lipid`, `tm_packed`, `hydrated`, or `functional`)
 - full saturation scan
 
 Supported codon usage options:
@@ -67,3 +69,4 @@ optional arguments:
 -mutationType              Run deep insertion scan "DIS" or deep mutation scan "DMS"
 -usage USAGE               Default is "human". Or select "ecoli"
 ```
+

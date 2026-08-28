@@ -106,6 +106,45 @@ CONSERVATIVE_MUTATIONS = {
     'Trp': ['Phe'],
 }
 
+MEMBRANE_ENVIRONMENTS = ('tm_lipid', 'tm_packed', 'hydrated', 'functional')
+
+# Environment-aware design rules for alpha-helical membrane proteins.  These
+# are intentionally conservative library-design heuristics, not claims that a
+# substitution is functionally neutral.  Proline and context-sensitive charged
+# or titratable residues are omitted where a safe automatic target is lacking.
+MEMBRANE_CONSERVATIVE_MUTATIONS = {
+    'tm_lipid': {
+        'Ala': ['Val', 'Leu'], 'Val': ['Ile', 'Leu'], 'Ile': ['Val', 'Leu'],
+        'Leu': ['Ile', 'Val', 'Met'], 'Met': ['Leu', 'Ile'],
+        'Phe': ['Leu', 'Trp'], 'Tyr': ['Phe', 'Trp'], 'Trp': ['Phe', 'Tyr'],
+        'Gly': ['Ala'], 'Ser': ['Thr', 'Ala'], 'Thr': ['Ser', 'Ala'],
+        'Cys': ['Ala'], 'Asn': ['Gln'], 'Gln': ['Asn'],
+    },
+    'tm_packed': {
+        'Ala': ['Gly', 'Val'], 'Val': ['Ile', 'Leu', 'Ala'],
+        'Ile': ['Val', 'Leu', 'Met'], 'Leu': ['Ile', 'Val', 'Met'],
+        'Met': ['Leu', 'Ile'], 'Phe': ['Tyr', 'Trp', 'Leu'],
+        'Tyr': ['Phe', 'Trp'], 'Trp': ['Phe', 'Tyr'], 'Gly': ['Ala'],
+        'Ser': ['Thr'], 'Thr': ['Ser'], 'Cys': ['Ser', 'Ala'],
+        'Asn': ['Gln'], 'Gln': ['Asn'], 'Asp': ['Glu'], 'Glu': ['Asp'],
+        'Lys': ['Arg'], 'Arg': ['Lys'], 'His': ['Asn', 'Gln'],
+    },
+    'hydrated': {
+        'Ala': ['Gly', 'Ser'], 'Val': ['Ile', 'Leu'], 'Ile': ['Val', 'Leu'],
+        'Leu': ['Ile', 'Met'], 'Met': ['Leu', 'Gln'], 'Phe': ['Tyr', 'Trp'],
+        'Tyr': ['Phe', 'Trp'], 'Trp': ['Phe', 'Tyr'], 'Gly': ['Ala', 'Ser'],
+        'Pro': ['Ala'], 'Ser': ['Thr', 'Asn'], 'Thr': ['Ser', 'Asn'],
+        'Cys': ['Ser'], 'Asn': ['Gln', 'Ser'], 'Gln': ['Asn', 'Glu'],
+        'Asp': ['Glu', 'Asn'], 'Glu': ['Asp', 'Gln'],
+        'Lys': ['Arg', 'Gln'], 'Arg': ['Lys', 'Gln'], 'His': ['Asn', 'Gln'],
+    },
+    'functional': {
+        'Asp': ['Glu'], 'Glu': ['Asp'], 'Lys': ['Arg'], 'Arg': ['Lys'],
+        'Asn': ['Gln'], 'Gln': ['Asn'], 'Ser': ['Thr'], 'Thr': ['Ser'],
+        'Phe': ['Tyr'], 'Tyr': ['Phe'],
+    },
+}
+
 
 def parse_ranges(text):
     ranges = []
@@ -117,6 +156,36 @@ def parse_ranges(text):
             end = start
         ranges.append((min(start, end), max(start, end)))
     return ranges
+
+
+def parse_membrane_environments(text):
+    """Parse 'tm_lipid:1-20,25; hydrated:21-24' into aa-position labels."""
+    environments = {}
+    if not text or not text.strip():
+        return environments
+    for group in [part.strip() for part in text.split(';') if part.strip()]:
+        if ':' not in group:
+            raise ValueError("Membrane environments must use environment:AA-ranges syntax.")
+        environment, ranges_text = [part.strip().lower() for part in group.split(':', 1)]
+        if environment not in MEMBRANE_ENVIRONMENTS:
+            raise ValueError(
+                "Unknown membrane environment '" + environment + "'. Choose from: " +
+                ", ".join(MEMBRANE_ENVIRONMENTS)
+            )
+        if not ranges_text:
+            raise ValueError("No amino-acid positions supplied for " + environment + ".")
+        for start, end in parse_ranges(ranges_text):
+            if start < 1:
+                raise ValueError("Amino-acid environment positions must be 1 or greater.")
+            for position in range(start, end + 1):
+                previous = environments.get(position)
+                if previous and previous != environment:
+                    raise ValueError(
+                        "Amino-acid position " + str(position) + " is assigned to both " +
+                        previous + " and " + environment + "."
+                    )
+                environments[position] = environment
+    return environments
 
 
 def circular_slice(sequence, start, length):
@@ -154,13 +223,17 @@ def preferred_codon(amino_acid, usage):
     return max(SYNONYMOUS_CODONS[amino_acid], key=lambda codon: usage_table.get(codon, 0))
 
 
-def mutation_targets(wt_amino_acid, scan_mode):
+def mutation_targets(wt_amino_acid, scan_mode, membrane_environment=None):
     if scan_mode == "alanine":
         return [] if wt_amino_acid == 'Ala' else ['Ala']
     if scan_mode == "glutamate":
         return [] if wt_amino_acid == 'Glu' else ['Glu']
     if scan_mode == "conservative":
         return CONSERVATIVE_MUTATIONS.get(wt_amino_acid, [])
+    if scan_mode == "membrane_conservative":
+        if membrane_environment not in MEMBRANE_ENVIRONMENTS:
+            raise ValueError("A valid membrane environment is required for membrane_conservative mode.")
+        return MEMBRANE_CONSERVATIVE_MUTATIONS[membrane_environment].get(wt_amino_acid, [])
     if scan_mode == "saturation":
         return [amino_acid for amino_acid in AMINO_ACIDS if amino_acid != wt_amino_acid]
     raise ValueError("Unknown scan mode: " + scan_mode)
@@ -251,6 +324,7 @@ def generate_infusion_alanine_scan(
     oligo_len=230,
     usage="human",
     scan_mode="alanine",
+    membrane_environments=None,
 ):
     os.makedirs(output, exist_ok=True)
     records = list(SeqIO.parse(fasta, "fasta"))
@@ -258,6 +332,13 @@ def generate_infusion_alanine_scan(
         raise ValueError("No FASTA records found.")
     if (gene_end - gene_start + 1) % 3 != 0:
         raise ValueError("Gene start/end length must be divisible by 3.")
+
+    membrane_environments = membrane_environments or {}
+    if scan_mode == "membrane_conservative" and not membrane_environments:
+        raise ValueError(
+            "membrane_conservative mode requires amino-acid environment annotations, for example "
+            "tm_lipid:1-20;tm_packed:21-30;hydrated:31-40;functional:41,44."
+        )
 
     inserts = []
     vector_primers = []
@@ -281,6 +362,14 @@ def generate_infusion_alanine_scan(
             )
 
             for chunk_start_zero, chunk_end_exclusive in chunks:
+                if scan_mode == "membrane_conservative":
+                    for codon_start in range(chunk_start_zero, chunk_end_exclusive, 3):
+                        aa_position = ((codon_start - gene_start_zero) // 3) + 1
+                        if aa_position not in membrane_environments:
+                            raise ValueError(
+                                "No membrane environment was assigned to amino-acid position " +
+                                str(aa_position) + "."
+                            )
                 region_seq = plasmid[chunk_start_zero:chunk_end_exclusive]
                 left_homology = circular_slice(plasmid, chunk_start_zero - homology_len, homology_len)
                 right_homology = circular_slice(plasmid, chunk_end_exclusive, homology_len)
@@ -292,7 +381,8 @@ def generate_infusion_alanine_scan(
                     codon = plasmid[codon_start:codon_start + 3]
                     wt_amino_acid = amino_acid_for_codon(codon)
                     aa_position = ((codon_start - gene_start_zero) // 3) + 1
-                    for mutant_amino_acid in mutation_targets(wt_amino_acid, scan_mode):
+                    membrane_environment = membrane_environments.get(aa_position, '')
+                    for mutant_amino_acid in mutation_targets(wt_amino_acid, scan_mode, membrane_environment):
                         mutant_codon = preferred_codon(mutant_amino_acid, usage)
                         mutation_offset = codon_start - chunk_start_zero
                         mutated_region = region_seq[:mutation_offset] + mutant_codon + region_seq[mutation_offset + 3:]
@@ -316,6 +406,7 @@ def generate_infusion_alanine_scan(
                             codon,
                             mutant_amino_acid,
                             mutant_codon,
+                            membrane_environment,
                             len(insert),
                         ])
 
@@ -344,6 +435,7 @@ def generate_infusion_alanine_scan(
             "wt_codon",
             "mutant_amino_acid",
             "mutant_codon",
+            "membrane_environment",
             "insert_length",
         ])
         writer.writerows(summary_rows)
@@ -365,7 +457,12 @@ def main():
     parser.add_argument("--output", required=True, help="Output folder.")
     parser.add_argument("--homology-len", default=18, type=int, help="In-Fusion homology length added to each insert end.")
     parser.add_argument("--oligo-len", default=230, type=int, help="Maximum total insert oligo length including homology arms.")
-    parser.add_argument("--scan-mode", choices=["alanine", "glutamate", "conservative", "saturation"], default="alanine", help="Mutation scan type.")
+    parser.add_argument("--scan-mode", choices=["alanine", "glutamate", "conservative", "membrane_conservative", "saturation"], default="alanine", help="Mutation scan type.")
+    parser.add_argument(
+        "--membrane-environments",
+        default="",
+        help="AA-position environments for membrane_conservative mode, e.g. tm_lipid:1-20;tm_packed:21-30;hydrated:31-40;functional:41,44.",
+    )
     parser.add_argument("--usage", choices=["human", "ecoli", "mouse"], default="human", help="Codon usage for mutant codon choice.")
     args = parser.parse_args()
 
@@ -379,8 +476,10 @@ def main():
         oligo_len=args.oligo_len,
         usage=args.usage,
         scan_mode=args.scan_mode,
+        membrane_environments=parse_membrane_environments(args.membrane_environments),
     )
 
 
 if __name__ == "__main__":
     main()
+

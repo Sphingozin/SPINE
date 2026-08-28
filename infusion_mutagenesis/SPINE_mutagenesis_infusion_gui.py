@@ -9,7 +9,11 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from SPINE_mutagenesis_infusion import generate_infusion_alanine_scan, parse_ranges
+from SPINE_mutagenesis_infusion import (
+    generate_infusion_alanine_scan,
+    parse_membrane_environments,
+    parse_ranges,
+)
 
 
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -42,8 +46,8 @@ class QueueWriter(io.TextIOBase):
 class SpineInfusionGui(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("SPINE Mutagenesis - In-Fusion (alanine/glutamate/conservative/saturation)")
-        self.geometry("920x680")
+        self.title("SPINE Mutagenesis - In-Fusion")
+        self.geometry("1050x760")
         self.minsize(820, 580)
         self.output_queue = queue.Queue()
         self.worker = None
@@ -68,6 +72,7 @@ class SpineInfusionGui(tk.Tk):
         self.oligo_len_var = tk.StringVar(value="230")
         self.usage_var = tk.StringVar(value="human")
         self.scan_mode_var = tk.StringVar(value="alanine")
+        self.membrane_environments_var = tk.StringVar()
 
         input_mode = ttk.Frame(form)
         input_mode.grid(row=0, column=1, columnspan=2, sticky="w", pady=4)
@@ -93,28 +98,42 @@ class SpineInfusionGui(tk.Tk):
         self._entry_row(form, 8, "Oligo length", self.oligo_len_var, "Maximum total insert length")
 
         ttk.Label(form, text="Scan mode").grid(row=9, column=0, sticky="w", pady=4)
-        ttk.Combobox(
+        scan_mode = ttk.Combobox(
             form,
             textvariable=self.scan_mode_var,
-            values=("alanine", "glutamate", "conservative", "saturation"),
+            values=("alanine", "glutamate", "conservative", "membrane_conservative", "saturation"),
             state="readonly",
-            width=16,
-        ).grid(row=9, column=1, sticky="w", pady=4)
+            width=24,
+        )
+        scan_mode.grid(row=9, column=1, sticky="w", pady=4)
+        scan_mode.bind("<<ComboboxSelected>>", self._toggle_membrane_mode)
 
-        ttk.Label(form, text="Codon usage").grid(row=10, column=0, sticky="w", pady=4)
+        ttk.Label(form, text="Membrane environments").grid(row=10, column=0, sticky="w", pady=4)
+        self.membrane_environments_entry = ttk.Entry(form, textvariable=self.membrane_environments_var)
+        self.membrane_environments_entry.grid(row=10, column=1, sticky="ew", pady=4)
+        ttk.Label(
+            form,
+            text="AA positions; e.g. tm_lipid:1-20;tm_packed:21-30;hydrated:31-40;functional:41,44",
+        ).grid(row=10, column=2, sticky="w", padx=(8, 0), pady=4)
+
+        ttk.Label(form, text="Codon usage").grid(row=11, column=0, sticky="w", pady=4)
         ttk.Combobox(form, textvariable=self.usage_var, values=("human", "mouse", "ecoli"), state="readonly", width=12).grid(
-            row=10, column=1, sticky="w", pady=4
+            row=11, column=1, sticky="w", pady=4
         )
 
-        mode_notes = ttk.Label(form, text="alanine: X->A | glutamate: X->E | conservative: similar amino acid | saturation: all non-WT amino acids")
-        mode_notes.grid(row=11, column=1, columnspan=2, sticky="w", pady=4)
+        mode_notes = ttk.Label(
+            form,
+            text="membrane_conservative uses environment-specific targets and requires complete AA-position annotation",
+        )
+        mode_notes.grid(row=12, column=1, columnspan=2, sticky="w", pady=4)
 
         actions = ttk.Frame(form)
-        actions.grid(row=12, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        actions.grid(row=13, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         actions.columnconfigure(0, weight=1)
         self.run_button = ttk.Button(actions, text="Run In-Fusion mutagenesis", command=self._start_run)
         self.run_button.grid(row=0, column=1, sticky="e")
         self._toggle_input_mode()
+        self._toggle_membrane_mode()
 
         output_frame = ttk.Frame(self, padding=(14, 0, 14, 14))
         output_frame.grid(row=1, column=0, sticky="nsew")
@@ -158,6 +177,10 @@ class SpineInfusionGui(tk.Tk):
         self.fasta_button.configure(state="normal" if use_file else "disabled")
         self.pasted_fasta.configure(state="disabled" if use_file else "normal")
 
+    def _toggle_membrane_mode(self, _event=None):
+        enabled = self.scan_mode_var.get() == "membrane_conservative"
+        self.membrane_environments_entry.configure(state="normal" if enabled else "disabled")
+
     def _start_run(self):
         if self.worker and self.worker.is_alive():
             return
@@ -195,6 +218,11 @@ class SpineInfusionGui(tk.Tk):
             if not os.path.isfile(fasta):
                 raise ValueError("The FASTA file was not found.")
 
+        scan_mode = self.scan_mode_var.get()
+        membrane_environments = parse_membrane_environments(self.membrane_environments_var.get())
+        if scan_mode == "membrane_conservative" and not membrane_environments:
+            raise ValueError("Enter membrane environments for every selected amino-acid position.")
+
         return {
             "fasta": fasta,
             "output": output,
@@ -204,7 +232,8 @@ class SpineInfusionGui(tk.Tk):
             "homology_len": int(self.homology_var.get().strip()),
             "oligo_len": int(self.oligo_len_var.get().strip()),
             "usage": self.usage_var.get(),
-            "scan_mode": self.scan_mode_var.get(),
+            "scan_mode": scan_mode,
+            "membrane_environments": membrane_environments,
         }
 
     def _run_infusion(self, config):
@@ -241,3 +270,4 @@ class SpineInfusionGui(tk.Tk):
 if __name__ == "__main__":
     app = SpineInfusionGui()
     app.mainloop()
+
