@@ -10,8 +10,8 @@ from datetime import datetime
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from SPINE_mutagenesis_infusion import (
+    MEMBRANE_ENVIRONMENTS,
     generate_infusion_alanine_scan,
-    parse_membrane_environments,
     parse_ranges,
 )
 
@@ -47,7 +47,7 @@ class SpineInfusionGui(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("SPINE Mutagenesis - In-Fusion")
-        self.geometry("1050x760")
+        self.geometry("1100x820")
         self.minsize(820, 580)
         self.output_queue = queue.Queue()
         self.worker = None
@@ -72,7 +72,7 @@ class SpineInfusionGui(tk.Tk):
         self.oligo_len_var = tk.StringVar(value="230")
         self.usage_var = tk.StringVar(value="human")
         self.scan_mode_var = tk.StringVar(value="alanine")
-        self.membrane_environments_var = tk.StringVar()
+        self.membrane_region_rows = []
 
         input_mode = ttk.Frame(form)
         input_mode.grid(row=0, column=1, columnspan=2, sticky="w", pady=4)
@@ -108,13 +108,22 @@ class SpineInfusionGui(tk.Tk):
         scan_mode.grid(row=9, column=1, sticky="w", pady=4)
         scan_mode.bind("<<ComboboxSelected>>", self._toggle_membrane_mode)
 
-        ttk.Label(form, text="Membrane environments").grid(row=10, column=0, sticky="w", pady=4)
-        self.membrane_environments_entry = ttk.Entry(form, textvariable=self.membrane_environments_var)
-        self.membrane_environments_entry.grid(row=10, column=1, sticky="ew", pady=4)
-        ttk.Label(
-            form,
-            text="AA positions; e.g. tm_lipid:1-20;tm_packed:21-30;hydrated:31-40;functional:41,44",
-        ).grid(row=10, column=2, sticky="w", padx=(8, 0), pady=4)
+        ttk.Label(form, text="Membrane region overrides").grid(row=10, column=0, sticky="nw", pady=4)
+        self.membrane_regions_frame = ttk.Frame(form)
+        self.membrane_regions_frame.grid(row=10, column=1, columnspan=2, sticky="ew", pady=4)
+        self.membrane_regions_frame.columnconfigure(0, weight=1)
+        headers = ttk.Frame(self.membrane_regions_frame)
+        headers.grid(row=0, column=0, sticky="ew")
+        ttk.Label(headers, text="Environment", width=20).grid(row=0, column=0, sticky="w")
+        ttk.Label(headers, text="Start nt", width=14).grid(row=0, column=1, sticky="w")
+        ttk.Label(headers, text="End nt", width=14).grid(row=0, column=2, sticky="w")
+        self.membrane_rows_container = ttk.Frame(self.membrane_regions_frame)
+        self.membrane_rows_container.grid(row=1, column=0, sticky="ew")
+        self.add_membrane_region_button = ttk.Button(
+            self.membrane_regions_frame, text="Add region", command=self._add_membrane_region
+        )
+        self.add_membrane_region_button.grid(row=2, column=0, sticky="w", pady=(4, 0))
+        self._add_membrane_region()
 
         ttk.Label(form, text="Codon usage").grid(row=11, column=0, sticky="w", pady=4)
         ttk.Combobox(form, textvariable=self.usage_var, values=("human", "mouse", "ecoli"), state="readonly", width=12).grid(
@@ -123,7 +132,7 @@ class SpineInfusionGui(tk.Tk):
 
         mode_notes = ttk.Label(
             form,
-            text="membrane_conservative uses environment-specific targets and requires complete AA-position annotation",
+            text="Membrane rows are optional nt-coordinate overrides; unlisted selected positions use regular conservative substitutions.",
         )
         mode_notes.grid(row=12, column=1, columnspan=2, sticky="w", pady=4)
 
@@ -179,7 +188,51 @@ class SpineInfusionGui(tk.Tk):
 
     def _toggle_membrane_mode(self, _event=None):
         enabled = self.scan_mode_var.get() == "membrane_conservative"
-        self.membrane_environments_entry.configure(state="normal" if enabled else "disabled")
+        self.add_membrane_region_button.configure(state="normal" if enabled else "disabled")
+        for row in self.membrane_region_rows:
+            row["environment"].configure(state="readonly" if enabled else "disabled")
+            row["start"].configure(state="normal" if enabled else "disabled")
+            row["end"].configure(state="normal" if enabled else "disabled")
+            row["remove"].configure(state="normal" if enabled else "disabled")
+
+    def _add_membrane_region(self):
+        frame = ttk.Frame(self.membrane_rows_container)
+        frame.pack(fill="x", pady=2)
+        environment_var = tk.StringVar(value="tm_lipid")
+        start_var = tk.StringVar()
+        end_var = tk.StringVar()
+        environment = ttk.Combobox(
+            frame, textvariable=environment_var, values=MEMBRANE_ENVIRONMENTS,
+            state="readonly", width=18,
+        )
+        start = ttk.Entry(frame, textvariable=start_var, width=12)
+        end = ttk.Entry(frame, textvariable=end_var, width=12)
+        environment.grid(row=0, column=0, padx=(0, 8))
+        start.grid(row=0, column=1, padx=(0, 8))
+        end.grid(row=0, column=2, padx=(0, 8))
+        row = {"frame": frame, "environment_var": environment_var, "start_var": start_var,
+               "end_var": end_var, "environment": environment, "start": start, "end": end}
+        remove = ttk.Button(frame, text="Remove", command=lambda: self._remove_membrane_region(row))
+        remove.grid(row=0, column=3)
+        row["remove"] = remove
+        self.membrane_region_rows.append(row)
+        self._toggle_membrane_mode()
+
+    def _remove_membrane_region(self, row):
+        row["frame"].destroy()
+        self.membrane_region_rows.remove(row)
+
+    def _read_membrane_regions(self):
+        regions = []
+        for row in self.membrane_region_rows:
+            start_text = row["start_var"].get().strip()
+            end_text = row["end_var"].get().strip()
+            if not start_text and not end_text:
+                continue
+            if not start_text or not end_text:
+                raise ValueError("Each membrane region row needs both a start and end nucleotide position.")
+            regions.append((row["environment_var"].get(), int(start_text), int(end_text)))
+        return regions
 
     def _start_run(self):
         if self.worker and self.worker.is_alive():
@@ -219,9 +272,7 @@ class SpineInfusionGui(tk.Tk):
                 raise ValueError("The FASTA file was not found.")
 
         scan_mode = self.scan_mode_var.get()
-        membrane_environments = parse_membrane_environments(self.membrane_environments_var.get())
-        if scan_mode == "membrane_conservative" and not membrane_environments:
-            raise ValueError("Enter membrane environments for every selected amino-acid position.")
+        membrane_regions = self._read_membrane_regions() if scan_mode == "membrane_conservative" else []
 
         return {
             "fasta": fasta,
@@ -233,7 +284,7 @@ class SpineInfusionGui(tk.Tk):
             "oligo_len": int(self.oligo_len_var.get().strip()),
             "usage": self.usage_var.get(),
             "scan_mode": scan_mode,
-            "membrane_environments": membrane_environments,
+            "membrane_regions": membrane_regions,
         }
 
     def _run_infusion(self, config):
