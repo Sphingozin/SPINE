@@ -45,10 +45,11 @@ The mutation regions must fall inside the selected gene. Regions are automatical
 
 ### Membrane-protein environments
 
-For `membrane_conservative`, annotate every amino-acid position covered by the mutation regions. Positions are numbered from the selected gene start, not from the plasmid start. Enter semicolon-separated environment groups such as:
+For `membrane_conservative`, use **Add region** to create any number of optional environment overrides. For each row, choose an environment and enter its 1-based **plasmid nucleotide** start and end coordinates. Region boundaries must coincide with complete codons in the selected gene.
 
 ```text
-tm_lipid:1-20;tm_packed:21-30;hydrated:31-40;functional:41,44
+Environment: tm_lipid   Start nt: 2050   End nt: 2109
+Environment: hydrated   Start nt: 2110   End nt: 2169
 ```
 
 Allowed environments:
@@ -58,7 +59,7 @@ Allowed environments:
 - `hydrated`: loops, solvent-exposed surfaces, aqueous crevices, or pore-facing residues
 - `functional`: gating charges, countercharges, conserved polar networks, and other sensitive positions
 
-The program requires a label for every selected codon and rejects conflicting or incomplete annotations. The `functional` class uses a deliberately narrow same-class substitution set. It does not imply that variants such as `R->K` or `E->D` are functionally neutral.
+Rows may cover only part of the mutated gene. Selected codons inside a row use that environment's membrane-aware map; every selected codon outside all rows automatically uses the regular conservative map. Overlapping rows are rejected. The `functional` class uses a deliberately narrow same-class substitution set. It does not imply that variants such as `R->K` or `E->D` are functionally neutral.
 
 ## Oligo Chunking
 
@@ -152,10 +153,10 @@ python SPINE_mutagenesis_infusion.py `
   --mutation-regions 1800-1919 `
   --output membrane_scan `
   --scan-mode membrane_conservative `
-  --membrane-environments "tm_lipid:1-20;tm_packed:21-30;hydrated:31-40"
+  --membrane-regions "tm_lipid:1800-1859;tm_packed:1860-1889;hydrated:1890-1919"
 ```
 
-The summary CSV includes a `membrane_environment` column for design traceability.
+The summary CSV includes a `membrane_environment` column for design traceability. Unannotated positions are recorded as `regular_conservative`. The older amino-acid-position `--membrane-environments` option remains available for backward compatibility.
 
 Allowed codon usage values:
 
