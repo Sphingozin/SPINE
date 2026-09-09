@@ -188,6 +188,65 @@ def parse_membrane_environments(text):
     return environments
 
 
+def parse_membrane_regions(text):
+    """Parse 'tm_lipid:2050-2109;hydrated:2110-2169' into nt regions."""
+    regions = []
+    if not text or not text.strip():
+        return regions
+    for group in [part.strip() for part in text.split(';') if part.strip()]:
+        if ':' not in group:
+            raise ValueError("Membrane regions must use environment:start-end syntax.")
+        environment, ranges_text = [part.strip().lower() for part in group.split(':', 1)]
+        if environment not in MEMBRANE_ENVIRONMENTS:
+            raise ValueError(
+                "Unknown membrane environment '" + environment + "'. Choose from: " +
+                ", ".join(MEMBRANE_ENVIRONMENTS)
+            )
+        for start, end in parse_ranges(ranges_text):
+            regions.append((environment, start, end))
+    return regions
+
+
+def validate_membrane_regions(membrane_regions, gene_start, gene_end):
+    """Validate 1-based plasmid nucleotide regions and return sorted regions."""
+    normalized = []
+    for environment, start, end in membrane_regions or []:
+        environment = str(environment).strip().lower()
+        start, end = int(start), int(end)
+        if environment not in MEMBRANE_ENVIRONMENTS:
+            raise ValueError("Unknown membrane environment '" + environment + "'.")
+        if start > end:
+            start, end = end, start
+        if start < gene_start or end > gene_end:
+            raise ValueError(
+                "Membrane region " + str(start) + "-" + str(end) +
+                " is outside the selected gene."
+            )
+        if (start - gene_start) % 3 or (end - gene_start + 1) % 3:
+            raise ValueError(
+                "Membrane region " + str(start) + "-" + str(end) +
+                " must begin and end on gene codon boundaries."
+            )
+        normalized.append((environment, start, end))
+    normalized.sort(key=lambda region: (region[1], region[2]))
+    for previous, current in zip(normalized, normalized[1:]):
+        if current[1] <= previous[2]:
+            raise ValueError(
+                "Membrane regions overlap: " + str(previous[1]) + "-" + str(previous[2]) +
+                " and " + str(current[1]) + "-" + str(current[2]) + "."
+            )
+    return normalized
+
+
+def membrane_environment_for_codon(codon_start_zero, membrane_regions):
+    codon_start = codon_start_zero + 1
+    codon_end = codon_start + 2
+    for environment, start, end in membrane_regions:
+        if start <= codon_start and codon_end <= end:
+            return environment
+    return "regular_conservative"
+
+
 def circular_slice(sequence, start, length):
     start = start % len(sequence)
     doubled = sequence + sequence
@@ -231,8 +290,10 @@ def mutation_targets(wt_amino_acid, scan_mode, membrane_environment=None):
     if scan_mode == "conservative":
         return CONSERVATIVE_MUTATIONS.get(wt_amino_acid, [])
     if scan_mode == "membrane_conservative":
+        if not membrane_environment or membrane_environment == "regular_conservative":
+            return CONSERVATIVE_MUTATIONS.get(wt_amino_acid, [])
         if membrane_environment not in MEMBRANE_ENVIRONMENTS:
-            raise ValueError("A valid membrane environment is required for membrane_conservative mode.")
+            raise ValueError("Unknown membrane environment: " + str(membrane_environment))
         return MEMBRANE_CONSERVATIVE_MUTATIONS[membrane_environment].get(wt_amino_acid, [])
     if scan_mode == "saturation":
         return [amino_acid for amino_acid in AMINO_ACIDS if amino_acid != wt_amino_acid]
@@ -325,20 +386,18 @@ def generate_infusion_alanine_scan(
     usage="human",
     scan_mode="alanine",
     membrane_environments=None,
+    membrane_regions=None,
 ):
     os.makedirs(output, exist_ok=True)
-    records = list(SeqIO.parse(fasta, "fasta"))
+    with open(fasta) as fasta_handle:
+        records = list(SeqIO.parse(fasta_handle, "fasta"))
     if not records:
         raise ValueError("No FASTA records found.")
     if (gene_end - gene_start + 1) % 3 != 0:
         raise ValueError("Gene start/end length must be divisible by 3.")
 
     membrane_environments = membrane_environments or {}
-    if scan_mode == "membrane_conservative" and not membrane_environments:
-        raise ValueError(
-            "membrane_conservative mode requires amino-acid environment annotations, for example "
-            "tm_lipid:1-20;tm_packed:21-30;hydrated:31-40;functional:41,44."
-        )
+    membrane_regions = validate_membrane_regions(membrane_regions, gene_start, gene_end)
 
     inserts = []
     vector_primers = []
@@ -362,14 +421,6 @@ def generate_infusion_alanine_scan(
             )
 
             for chunk_start_zero, chunk_end_exclusive in chunks:
-                if scan_mode == "membrane_conservative":
-                    for codon_start in range(chunk_start_zero, chunk_end_exclusive, 3):
-                        aa_position = ((codon_start - gene_start_zero) // 3) + 1
-                        if aa_position not in membrane_environments:
-                            raise ValueError(
-                                "No membrane environment was assigned to amino-acid position " +
-                                str(aa_position) + "."
-                            )
                 region_seq = plasmid[chunk_start_zero:chunk_end_exclusive]
                 left_homology = circular_slice(plasmid, chunk_start_zero - homology_len, homology_len)
                 right_homology = circular_slice(plasmid, chunk_end_exclusive, homology_len)
@@ -381,7 +432,12 @@ def generate_infusion_alanine_scan(
                     codon = plasmid[codon_start:codon_start + 3]
                     wt_amino_acid = amino_acid_for_codon(codon)
                     aa_position = ((codon_start - gene_start_zero) // 3) + 1
-                    membrane_environment = membrane_environments.get(aa_position, '')
+                    membrane_environment = ''
+                    if scan_mode == "membrane_conservative":
+                        membrane_environment = membrane_environments.get(
+                            aa_position,
+                            membrane_environment_for_codon(codon_start, membrane_regions),
+                        )
                     for mutant_amino_acid in mutation_targets(wt_amino_acid, scan_mode, membrane_environment):
                         mutant_codon = preferred_codon(mutant_amino_acid, usage)
                         mutation_offset = codon_start - chunk_start_zero
@@ -459,6 +515,11 @@ def main():
     parser.add_argument("--oligo-len", default=230, type=int, help="Maximum total insert oligo length including homology arms.")
     parser.add_argument("--scan-mode", choices=["alanine", "glutamate", "conservative", "membrane_conservative", "saturation"], default="alanine", help="Mutation scan type.")
     parser.add_argument(
+        "--membrane-regions",
+        default="",
+        help="Optional plasmid-nt overrides, e.g. tm_lipid:2050-2109;hydrated:2110-2169. Unlisted positions use regular conservative substitutions.",
+    )
+    parser.add_argument(
         "--membrane-environments",
         default="",
         help="AA-position environments for membrane_conservative mode, e.g. tm_lipid:1-20;tm_packed:21-30;hydrated:31-40;functional:41,44.",
@@ -477,6 +538,7 @@ def main():
         usage=args.usage,
         scan_mode=args.scan_mode,
         membrane_environments=parse_membrane_environments(args.membrane_environments),
+        membrane_regions=parse_membrane_regions(args.membrane_regions),
     )
 
 
