@@ -7,6 +7,7 @@ from SPINE_mutagenesis_infusion import (
     generate_infusion_alanine_scan,
     mutation_targets,
     parse_membrane_environments,
+    parse_membrane_regions,
 )
 
 
@@ -28,6 +29,13 @@ class MembraneConservativeTests(unittest.TestCase):
         self.assertEqual(mutation_targets("Ser", "membrane_conservative", "tm_packed"), ["Thr"])
         self.assertEqual(mutation_targets("Arg", "membrane_conservative", "tm_lipid"), [])
         self.assertEqual(mutation_targets("Arg", "membrane_conservative", "functional"), ["Lys"])
+        self.assertEqual(mutation_targets("Arg", "membrane_conservative"), ["Lys"])
+
+    def test_nt_region_parser(self):
+        self.assertEqual(
+            parse_membrane_regions("tm_lipid:1-3;hydrated:4-9"),
+            [("tm_lipid", 1, 3), ("hydrated", 4, 9)],
+        )
 
     def test_generation_records_environment(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -40,28 +48,44 @@ class MembraneConservativeTests(unittest.TestCase):
                 fasta=str(fasta), gene_start=1, gene_end=12,
                 mutation_regions=[(1, 12)], output=str(output),
                 homology_len=3, oligo_len=18, scan_mode="membrane_conservative",
-                membrane_environments=parse_membrane_environments(
-                    "tm_lipid:1;functional:2;tm_packed:3;hydrated:4"
-                ),
+                membrane_regions=[
+                    ("tm_lipid", 1, 3), ("functional", 4, 6), ("tm_packed", 7, 9)
+                ],
             )
             self.assertTrue(inserts)
             self.assertTrue(primers)
-            self.assertEqual({row[-2] for row in rows}, {"tm_lipid", "functional", "tm_packed", "hydrated"})
+            self.assertEqual(
+                {row[-2] for row in rows},
+                {"tm_lipid", "functional", "tm_packed", "regular_conservative"},
+            )
             with (output / "InFusion_Mutagenesis_Summary.csv").open(newline="") as handle:
                 summary = list(csv.DictReader(handle))
             self.assertEqual(summary[0]["membrane_environment"], "tm_lipid")
 
-    def test_missing_annotation_is_rejected(self):
+    def test_missing_annotation_uses_regular_conservative(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fasta = root / "input.fasta"
+            fasta.write_text(">test\nAGCCGCCTGCCC\n", encoding="ascii")
+            _, _, rows = generate_infusion_alanine_scan(
+                fasta=str(fasta), gene_start=1, gene_end=12,
+                mutation_regions=[(1, 12)], output=str(root / "output"),
+                homology_len=3, oligo_len=18, scan_mode="membrane_conservative",
+                membrane_regions=[("tm_lipid", 1, 3)],
+            )
+            self.assertIn("regular_conservative", {row[-2] for row in rows})
+
+    def test_region_must_follow_codon_boundaries(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             fasta = root / "input.fasta"
             fasta.write_text(">test\nAGCCGC\n", encoding="ascii")
-            with self.assertRaisesRegex(ValueError, "position 2"):
+            with self.assertRaisesRegex(ValueError, "codon boundaries"):
                 generate_infusion_alanine_scan(
                     fasta=str(fasta), gene_start=1, gene_end=6,
                     mutation_regions=[(1, 6)], output=str(root / "output"),
                     homology_len=3, oligo_len=12, scan_mode="membrane_conservative",
-                    membrane_environments={1: "tm_lipid"},
+                    membrane_regions=[("tm_lipid", 2, 4)],
                 )
 
 
